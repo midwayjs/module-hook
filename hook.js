@@ -52,18 +52,18 @@ class Hook extends EventEmitter {
 
   tryPackage(requestPath, exts) {
     const pkg = this.readPackage(requestPath);
-    if (!(pkg && pkg.main)) {
+    if (!pkg) {
       return false;
     }
 
     const resolved = pkg['_resolved'];
-    const main = pkg.main;
+    const main = pkg.main || 'index.js';
 
     let filename;
 
-    if(resolved) {
-      filename =  moduleCache[resolved] || (moduleCache[resolved] = path.resolve(requestPath, main));
-    }else{
+    if (resolved) {
+      filename = moduleCache[resolved] || (moduleCache[resolved] = path.resolve(requestPath, main));
+    } else {
       filename = path.resolve(requestPath, main);
     }
 
@@ -75,8 +75,8 @@ class Hook extends EventEmitter {
     });
 
     return this.tryFile(filename) ||
-           this.tryExtensions(filename, exts) ||
-           this.tryExtensions(path.resolve(filename, 'index'), exts);
+      this.tryExtensions(filename, exts) ||
+      this.tryExtensions(path.resolve(filename, 'index'), exts);
   }
 
   tryFile(requestPath) {
@@ -116,48 +116,48 @@ class Hook extends EventEmitter {
     });
 
     Module._findPath = function(request, paths) {
-       var exts = Object.keys(Module._extensions);
+      var exts = Object.keys(Module._extensions);
 
-        if (request.charAt(0) === '/') {
-          paths = [''];
-        }
+      if (request.charAt(0) === '/') {
+        paths = [''];
+      }
 
-        var trailingSlash = (request.slice(-1) === '/');
+      var trailingSlash = (request.slice(-1) === '/');
 
-        var cacheKey = JSON.stringify({request: request, paths: paths});
-        if (Module._pathCache[cacheKey]) {
-          return Module._pathCache[cacheKey];
-        }
+      var cacheKey = JSON.stringify({ request: request, paths: paths });
+      if (Module._pathCache[cacheKey]) {
+        return Module._pathCache[cacheKey];
+      }
 
-        // For each path
-        for (var i = 0, PL = paths.length; i < PL; i++) {
-          let basePath = path.resolve(paths[i], request);
-          let filename;
+      // For each path
+      for (var i = 0, PL = paths.length; i < PL; i++) {
+        let basePath = path.resolve(paths[i], request);
+        let filename;
 
-          if (!trailingSlash) {
-            // try to join the request to the path
-            filename = self.tryFile(basePath);
-            if (!filename && !trailingSlash) {
-              // try it with each of the extensions
-              filename = self.tryExtensions(basePath, exts);
-            }
-          }
-
-          if (!filename) {
-            filename = self.tryPackage(basePath, exts);
-          }
-
-          if (!filename) {
-            filename = self.tryExtensions(path.resolve(basePath, 'index'), exts);
-          }
-
-          if (filename) {
-            Module._pathCache[cacheKey] = filename;
-            return filename;
+        if (!trailingSlash) {
+          // try to join the request to the path
+          filename = self.tryFile(basePath);
+          if (!filename && !trailingSlash) {
+            // try it with each of the extensions
+            filename = self.tryExtensions(basePath, exts);
           }
         }
-        return false;
-      };
+
+        if (!filename) {
+          filename = self.tryPackage(basePath, exts);
+        }
+
+        if (!filename) {
+          filename = self.tryExtensions(path.resolve(basePath, 'index'), exts);
+        }
+
+        if (filename) {
+          Module._pathCache[cacheKey] = filename;
+          return filename;
+        }
+      }
+      return false;
+    };
   }
 }
 
