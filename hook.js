@@ -67,6 +67,10 @@ class Hook extends EventEmitter {
       filename = path.resolve(requestPath, main);
     }
 
+    if (!filename) {
+      return false;
+    }
+
     this.emit('beforeRequire', {
       name: pkg.name,
       version: pkg.version,
