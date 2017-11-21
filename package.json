@@ -1,0 +1,26 @@
+{
+  "name": "module-hook",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "egg-bin test",
+    "cov": "nyc report --reporter=html && nyc mocha"
+  },
+  "files": [
+    "index.js",
+    "hook.js"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "semver": "^5.4.1",
+    "shimmer": "^1.1.0"
+  },
+  "devDependencies": {
+    "debug": "^3.1.0",
+    "egg-bin": "^4.3.5",
+    "mocha": "^4.0.1",
+    "nyc": "^11.3.0"
+  }
+}
