@@ -1,171 +1,103 @@
 'use strict';
 
 const Module = require('module');
-const assert = require('assert').ok;
-const fs = require('fs');
 const path = require('path');
 const EventEmitter = require('events');
 const shimmer = require('shimmer');
-const moduleCache = {};
-
-function hasOwnProperty(obj, prop) {
-  return Object.prototype.hasOwnProperty.call(obj, prop);
-}
-
-function statPath(path) {
-  try {
-    return fs.statSync(path);
-  } catch (ex) {}
-  return false;
-}
-
-// check if the directory is a package.json dir
-const packageMainCache = {};
+const util = require('util');
+const debug = util.debuglog('ModuleHook:Hook');
 
 class Hook extends EventEmitter {
   constructor() {
     super();
+    this.sourceReplacer = new Map();
     this.hookRequire();
   }
 
-  readPackage(requestPath) {
-    if (hasOwnProperty(packageMainCache, requestPath)) {
-      return packageMainCache[requestPath];
-    }
+  findBasePath(name, filepath) {
+    // 因为 npm 包路径为 name@version@name 的形式，
+    // 所以在 name 前加一个 @，防止出现包名循环的情况
+    name = '@' + name;
+    const nLen = name.length;
+    const idx = filepath.indexOf(name);
 
-    try {
-      var jsonPath = path.resolve(requestPath, 'package.json');
-      var json = fs.readFileSync(jsonPath, 'utf8');
-    } catch (e) {
-      return false;
-    }
-
-    try {
-      var pkg = packageMainCache[requestPath] = JSON.parse(json);
-    } catch (e) {
-      e.path = jsonPath;
-      e.message = 'Error parsing ' + jsonPath + ': ' + e.message;
-      throw e;
-    }
-    return pkg;
-  }
-
-  tryPackage(requestPath, exts) {
-    const pkg = this.readPackage(requestPath);
-    if (!pkg) {
-      return false;
-    }
-
-    const resolved = pkg['_resolved'];
-    const main = pkg.main || 'index.js';
-
-    let filename;
-
-    if (resolved) {
-      filename = moduleCache[resolved] || (moduleCache[resolved] = path.resolve(requestPath, main));
-    } else {
-      filename = path.resolve(requestPath, main);
-    }
-
-    if (!filename) {
-      return false;
-    }
-
-    this.emit('beforeRequire', {
-      name: pkg.name,
-      version: pkg.version,
-      path: requestPath,
-      'package': pkg,
-    });
-
-    return this.tryFile(filename) ||
-      this.tryExtensions(filename, exts) ||
-      this.tryExtensions(path.resolve(filename, 'index'), exts);
-  }
-
-  tryFile(requestPath) {
-    const stats = statPath(requestPath);
-    if (stats && !stats.isDirectory()) {
-      return fs.realpathSync(requestPath, Module._realpathCache);
-    }
-    return false;
-  }
-
-  // given a path check a the file exists with any of the set extensions
-  tryExtensions(p, exts) {
-    for (let i = 0, EL = exts.length; i < EL; i++) {
-      const filename = this.tryFile(p + exts[i]);
-      if (filename) {
-        return filename;
+    function _findBasePath(_filepath) {
+      let base = path.dirname(_filepath);
+      let pLen = base.length;
+      debug('_filepath: ', _filepath);
+      // 如果路径长度减去包名长度等于所在位置
+      // 则为包的根目录
+      if (pLen - nLen === idx) {
+        return base;
+      } else {
+        return _findBasePath(base);
       }
     }
-    return false;
+
+    return _findBasePath(filepath);
+  }
+
+  register(filename, replacer) {
+    this.sourceReplacer.set(filename, replacer);
+    console.log('this.sourceReplacer: ', this.sourceReplacer);
   }
 
   hookRequire() {
     const self = this;
 
     shimmer.wrap(Module.prototype, '_compile', function(compile) {
+
       return function(content, filename) {
-        const info = {
-          content,
-          filename
-        };
-        let source = info.content;
-        self.emit('beforeCompile', info, function(content) {
-          source = content;
-        });
-        return compile.call(this, source, info.filename);
+        debug('compile filename: ', filename);
+        const replacer = self.sourceReplacer.get(filename);
+        let replaced = content;
+
+        if (replacer) {
+          replaced = replacer(content);
+        }
+
+        return compile.call(this, replaced, filename);
       }
     });
 
-    Module._findPath = function(request, paths) {
-      var exts = Object.keys(Module._extensions);
+    shimmer.wrap(Module, '_findPath', function(_findPath) {
 
-      if (request.charAt(0) === '/') {
-        paths = [''];
-      }
+      return function(request, paths, isMain) {
+        debug('request: ', request);
+        const filepath = _findPath(request, paths, isMain);
+        debug('filename: ', filepath);
 
-      var trailingSlash = (request.slice(-1) === '/');
+        if (filepath) {
+          const name = request;
+          const regex = new RegExp(`_(${name.replace('/', '_')})@(\\d+(\\.\\d+)*)@(${name})`);
+          const match = regex.exec(filepath);
+          debug('match: ', match);
+          // 如果没有匹配结果，说明是类似 ./xxx/xxx 这种的应用，不是包名，忽略
+          if (match) {
+            const version = match[2];
+            const basePath = self.findBasePath(request, filepath);
+            debug('version: ', version);
+            debug('basePath: ', basePath);
 
-      var cacheKey = JSON.stringify({ request: request, paths: paths });
-      if (Module._pathCache[cacheKey]) {
-        return Module._pathCache[cacheKey];
-      }
-
-      // For each path
-      for (var i = 0, PL = paths.length; i < PL; i++) {
-        let basePath = path.resolve(paths[i], request);
-        let filename;
-
-        if (!trailingSlash) {
-          // try to join the request to the path
-          filename = self.tryFile(basePath);
-          if (!filename && !trailingSlash) {
-            // try it with each of the extensions
-            filename = self.tryExtensions(basePath, exts);
+            self.emit('beforeRequire', {
+              name: name,
+              version: version,
+              path: basePath
+            });
           }
         }
 
-        if (!filename) {
-          filename = self.tryPackage(basePath, exts);
-        }
+        return filepath;
+      };
+    });
 
-        if (!filename) {
-          filename = self.tryExtensions(path.resolve(basePath, 'index'), exts);
-        }
-
-        if (filename) {
-          Module._pathCache[cacheKey] = filename;
-          return filename;
-        }
-      }
-      return false;
-    };
+    // 清除在加载过程中缓存的包信息，保证之后的都会被 hook 处理
+    Module._cache = Object.create(null);
   }
 }
 
 if (!global.__require__hook) {
   global.__require__hook = new Hook();
 }
+
 module.exports = global.__require__hook;
