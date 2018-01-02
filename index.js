@@ -21,28 +21,24 @@ hook.on('beforeRequire', (info) => {
         item.handler(function loadModule(filename) {
           return require(path.join(info.path, filename));
         }, function replaceSource(filename, replace) {
+          console.log('info.path: ', info.path);
           const realPath = path.join(info.path, filename);
+          console.log('realPath: ', realPath);
+          let replacer;
           if (typeof replace === 'function') {
-            compile[realPath] = replace;
+            replacer = replace;
           } else if (typeof replace === 'string' && fs.existsSync(replace)) {
-            compile[realPath] = function() {
+            replacer = function() {
               return fs.readFileSync(replace, 'utf8');
             }
           }
-        });
+
+          hook.register(realPath, replacer);
+        }, version);
 
         item.handler.wrapped = true;
       }
     }
-  }
-});
-
-hook.on('beforeCompile', (info, callback) => {
-  const filename = info.filename;
-  if (compile[filename]) {
-    callback(compile[filename](info.content));
-  } else {
-    callback(info.content);
   }
 });
 
