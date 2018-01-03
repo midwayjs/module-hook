@@ -12,11 +12,9 @@ Module._cache = Object.create(null);
 
 hook('semver', '5.x', (loadModule, replaceSource, version) => {
   assert(version);
-  replaceSource('semver.js', (source) => {
-    return 'module.exports = 1';
-  });
+  replaceSource('semver.js', '/fakePath/fakeModule.js');
 });
 
 const semver = require('semver');
-assert(semver === 1);
+assert(semver.satisfies);
 process.send('done');
