@@ -12,6 +12,7 @@ import * as shimmer from 'shimmer';
 import { satisfies } from 'semver';
 
 const debug = debuglog('ModuleHook');
+const MAX_DEEPTH = 10; // 最大探索深度
 
 export class ModuleHook {
 
@@ -41,7 +42,7 @@ export class ModuleHook {
     } else {
       const versions = this.handlers.get(name);
 
-      if (!version.has(version)) {
+      if (!versions.has(version)) {
         versions.set(version, handler);
       } else {
         debug('register duplicate module handler [%s@%s].', name, version);
@@ -58,20 +59,38 @@ export class ModuleHook {
   }
 
   private findBasePath(name, filepath): string | boolean {
-    // 因为 npm 包路径为 name@version@name 的形式，
-    // 所以在 name 前加一个 @，防止出现包名循环的情况
-    name = '@' + name;
-    const nLen = name.length;
-    const idx = filepath.indexOf(name);
+    const linkRegex = new RegExp(`_(${name.replace('/', '_')})@(\\d+(\\.\\d+)*)@(${name})`);
+    const match = linkRegex.exec(filepath);
+    let deepth = 1;
+    let nLen;
+    let idx;
+
+    // _name@version@name 的路径形式
+    if (match) {
+      // 在 name 前加一个 @，防止出现包名循环的情况
+      name = '@' + name;
+      nLen = name.length;
+      idx = filepath.indexOf(name);
+    } else {
+      // name 形式
+      nLen = name.length;
+      idx = filepath.indexOf(name);
+    }
 
     function _findBasePath(_filepath) {
+      if (deepth > MAX_DEEPTH) {
+        debug('find overflow MAX_DEEPTH, exit');
+        return false;
+      }
+
+      deepth ++;
       let base = path.dirname(_filepath);
       let pLen = base.length;
       debug('_filepath: ', _filepath);
       // 如果路径长度减去包名长度等于所在位置
       // 则为包的根目录
       if (pLen - nLen === idx) {
-        return base || false;
+        return base;
       } else {
         return _findBasePath(base);
       }
@@ -80,8 +99,35 @@ export class ModuleHook {
     return _findBasePath(filepath);
   }
 
+  private getModuleInfo(base) {
+    if (!base) return null;
+
+    const pkgPath = path.join(base, 'package.json');
+
+    if (existsSync(pkgPath)) {
+      try {
+        let pkg = readFileSync(pkgPath);
+        pkg = JSON.parse(String(pkg));
+
+        return {
+          version: (<any>pkg).version,
+          main: (<any>pkg).main || 'index.js'
+        };
+      } catch(err) {
+        debug('getModuleInfo failed. ', err);
+        return null;
+      }
+    } else {
+      return null;
+    }
+  }
+
   private signature(name, version) {
     return name + '@' + version;
+  }
+
+  private isModule(request) {
+    return request && !request.startsWith('.') && !request.startsWith('/');
   }
 
   doHook = (name, version, base) => {
@@ -113,12 +159,12 @@ export class ModuleHook {
 
               if (typeof replacer === 'string') {
                 const file = replacer;
-                replacer = function sourceReplacer() {
+                replacer = function sourceReplacer(content) {
                   if (existsSync(file)) {
                     return readFileSync(file, 'utf8');
                   } else {
                     debug('can\'t find replacer file: %s.', file);
-                    return '';
+                    return content;
                   }
                 };
               }
@@ -133,16 +179,20 @@ export class ModuleHook {
       }
     }
 
+    // 在重复引用模块时会触发，或者循环依赖，防止发生多次修改。
+    // 清除缓存后也不会再执行
     debug('no hook for [%s@%s].', name, version);
   }
 
   hookRequire() {
     const self = this;
+    // 不能清空模块缓存，否则会导致直接模块的单例失败
 
     shimmer.wrap(Module.prototype, '_compile', function(compile) {
 
       return function(this: NodeModule, content, filename) {
         debug('compile filename: %s', filename);
+        // 一般只会执行一次，如果模块缓存被清理，则会再执行
         const replacer = self.sourceReplacer.get(filename);
         let replaced = content;
 
@@ -159,22 +209,24 @@ export class ModuleHook {
       return function(request, paths, isMain) {
         debug('request: %s', request);
         const filepath = _findPath(request, paths, isMain);
-        debug('filename: %s', filepath);
+        debug('filepath: %s', filepath);
+
+        // 不是模块名，直接返回
+        if (!self.isModule(request)) {
+          return filepath;
+        }
 
         if (filepath) {
-          const name = request;
-          const regex = new RegExp(`_(${name.replace('/', '_')})@(\\d+(\\.\\d+)*)@(${name})`);
-          const match = regex.exec(filepath);
-          debug('match: %j', match);
-          // 如果没有匹配结果，说明是相对路径引用，忽略
-          if (match) {
-            const version = match[2];
-            const basePath = self.findBasePath(request, filepath);
-            debug('version: %s', version);
-            debug('basePath: %s', basePath);
+          const basePath = self.findBasePath(request, filepath);
+          debug('basePath: %s', basePath);
+          const moduleInfo = self.getModuleInfo(basePath);
+          debug('basePath: %o', moduleInfo);
 
-            if (basePath) {
-              self.doHook(name, version, basePath);
+          if (moduleInfo) {
+            try {
+              self.doHook(request, moduleInfo.version, basePath);
+            } catch(error) {
+              debug(`doHook with [${request}, ${moduleInfo.version}, ${basePath}] failed. `, error);
             }
           }
         }
@@ -182,8 +234,5 @@ export class ModuleHook {
         return filepath;
       };
     });
-
-    // 清除在加载过程中缓存的包信息，保证之后的都会被 hook 处理
-    Module._cache = Object.create(null);
   }
 }
