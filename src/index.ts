@@ -15,3 +15,5 @@ export function hook(name: string, version: string, handler: IHookHandler) {
 
   moduleHook.register(name, version, handler);
 }
+
+export * from './domain';
