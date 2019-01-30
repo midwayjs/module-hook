@@ -7,7 +7,6 @@
 import * as path from 'path';
 import { expect } from 'chai';
 import { ModuleHook } from '../../src/lib/ModuleHook';
-import *  as sinon from 'sinon';
 
 describe('test/unit/ModuleHook.test.ts', function() {
   let moduleHook = ModuleHook.getInstance();
@@ -25,6 +24,13 @@ describe('test/unit/ModuleHook.test.ts', function() {
       const base = moduleHook['findBasePath']('pandora-shimmer-test', origin);
 
       expect(base).to.equal('/Users/mariodu/Documents/work/Midway/pandora/packages/metrics/node_modules/pandora-shimmer-test');
+    });
+
+    it('should work with same name in path', function() {
+      const origin = '/Users/mariodu/Documents/work/ali-pandora/packages/component-auto-patching/node_modules/@ali/hsf-server-v4/node_modules/hsf-server/lib/server.js';
+      const base = moduleHook['findBasePath']('hsf-server', origin);
+
+      expect(base).to.equal('/Users/mariodu/Documents/work/ali-pandora/packages/component-auto-patching/node_modules/@ali/hsf-server-v4/node_modules/hsf-server');
     });
 
     it('should get false when deepth is too large', function() {
