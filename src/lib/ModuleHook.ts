@@ -70,11 +70,11 @@ export class ModuleHook {
       // 在 name 前加一个 @，防止出现包名循环的情况
       name = '@' + name;
       nLen = name.length;
-      idx = filepath.indexOf(name);
+      idx = filepath.lastIndexOf(name);
     } else {
-      // name 形式
+      // name 形式，可能包含相同名字，所以查找最后一个
       nLen = name.length;
-      idx = filepath.indexOf(name);
+      idx = filepath.lastIndexOf(name);
     }
 
     function _findBasePath(_filepath) {
