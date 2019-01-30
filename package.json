@@ -1,6 +1,6 @@
 {
   "name": "module-hook",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "Register hook for module require.",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
@@ -10,7 +10,8 @@
     "lint": "./node_modules/.bin/tslint --format prose -c ./tslint.json src/**/*.ts test/**/*.ts",
     "cov": "NODE_ENV=test nyc --reporter=html mocha",
     "ci": "npm run test",
-    "authors": "git log --format='%aN <%aE>' | sort -u > AUTHORS"
+    "authors": "git log --format='%aN <%aE>' | sort -u > AUTHORS",
+    "prepublishOnly": "npm run ci && npm run build"
   },
   "files": [
     "src",
@@ -32,7 +33,7 @@
   "devDependencies": {
     "@types/chai": "^4.0.10",
     "@types/mocha": "^2.2.41",
-    "@types/node": "^8.5.2",
+    "@types/node": "^8.10.39",
     "chai": "^4.1.2",
     "mocha": "^4.1.0",
     "nyc": "^11.4.1",

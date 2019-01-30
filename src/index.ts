@@ -6,11 +6,14 @@
 
 import * as assert from 'assert';
 import { ModuleHook } from './lib/ModuleHook';
+import { IHookHandler } from './domain';
 
 const moduleHook = ModuleHook.getInstance();
 
-export function hook(name, version, handler) {
+export function hook(name: string, version: string, handler: IHookHandler) {
   assert(typeof handler === 'function');
 
   moduleHook.register(name, version, handler);
 }
+
+export * from './domain';
