@@ -1,6 +1,6 @@
 {
   "name": "module-hook",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Register hook for module require.",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
