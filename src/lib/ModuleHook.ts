@@ -59,6 +59,9 @@ export class ModuleHook {
   }
 
   private findBasePath(name, filepath): string | boolean {
+    if (path.basename(filepath, '.js') === path.basename(name, '.js') && path.dirname(name) !== '.') {
+      name = path.dirname(name);
+    }
     const linkRegex = new RegExp(`_(${name.replace('/', '_')})@(\\d+(\\.\\d+)*)@(${name})`);
     const match = linkRegex.exec(filepath);
     let deepth = 1;
